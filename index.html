@@ -154,7 +154,8 @@
     const SUPABASE_URL = 'https://pwsidjuloixumvxxfvjn.supabase.co';
     const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3c2lkanVsb2l4dW12eHhmdmpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MjY4MjgsImV4cCI6MjA5ODEwMjgyOH0.-DMypXEWU9B5dsFf5tQ5WevcF0GqE_s31aO7GPGxTAs';
     
-    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const { createClient } = window.supabase;
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Application State
     let currentUser = null;
