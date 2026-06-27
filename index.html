@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tier Maker Realtime</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+    }
+    .tier-row {
+      min-height: 100px;
+    }
+    .drag-item {
+      cursor: grab;
+      user-select: none;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .drag-item:active {
+      cursor: grabbing;
+    }
+    .drag-item.dragging {
+      opacity: 0.5;
+      transform: scale(0.95);
+    }
+    .dropzone.dragover {
+      background-color: rgba(255, 255, 255, 0.1);
+      border: 2px dashed rgba(255, 255, 255, 0.5);
+    }
+    /* Custom Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #1f2937;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #4b5563;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #6b7280;
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            tierS: '#ff7f7f',
+            tierA: '#ffbf7f',
+            tierB: '#ffff7f',
+            tierC: '#7fff7f',
+            tierD: '#7fbfff',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col antialiased">
+  
+  <!-- Auth Section -->
+  <div id="auth-section" class="flex-grow flex items-center justify-center p-6 flex-col hidden">
+    <div class="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center relative overflow-hidden">
+      <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500"></div>
+      <h1 class="text-3xl font-bold mb-2 tracking-tight text-white">Tier Maker</h1>
+      <p class="text-gray-400 mb-8">Sign in to collaborate in real-time</p>
+      <button id="login-btn" class="w-full flex items-center justify-center gap-3 bg-white text-gray-900 font-semibold py-3 px-4 rounded-xl hover:bg-gray-100 transition-all duration-300 shadow-md">
+        <svg class="w-5 h-5" viewBox="0 0 24 24">
+          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+          <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+          <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+          <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+        </svg>
+        Sign in with Google
+      </button>
+    </div>
+  </div>
+
+  <!-- App Section -->
+  <div id="app-section" class="flex-grow flex flex-col hidden p-4 sm:p-8 max-w-6xl mx-auto w-full">
+    <header class="flex justify-between items-center mb-8 bg-gray-800 p-4 rounded-xl border border-gray-700 shadow-lg">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 rounded-full bg-gradient-to-br from-pink-500 to-orange-400 flex items-center justify-center text-xl font-bold shadow-inner">T</div>
+        <h1 class="text-2xl font-bold tracking-tight">Realtime Tier Maker</h1>
+      </div>
+      <div class="flex items-center gap-4">
+        <div class="flex items-center gap-2">
+          <div class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></div>
+          <span class="text-sm text-gray-300 font-medium" id="user-info">Live</span>
+        </div>
+        <button id="logout-btn" class="text-sm bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg font-medium transition-colors border border-gray-600">Logout</button>
+      </div>
+    </header>
+
+    <!-- Controls -->
+    <div class="mb-8 flex gap-3">
+      <input type="text" id="new-item-input" placeholder="Type a text block to add..." class="flex-grow bg-gray-800 border border-gray-700 rounded-xl px-5 py-3 text-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder-gray-500 transition-all shadow-inner">
+      <button id="add-item-btn" class="bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0">Add</button>
+    </div>
+
+    <!-- Tiers Container -->
+    <div class="flex flex-col gap-2 mb-8 bg-gray-800 p-2 rounded-2xl border border-gray-700 shadow-xl overflow-hidden" id="tiers-container">
+      
+      <!-- Tier S -->
+      <div class="flex min-h-[100px] border-b border-gray-700/50 last:border-0 relative group">
+        <div class="w-24 sm:w-32 bg-tierS flex items-center justify-center text-gray-900 font-black text-2xl sm:text-3xl shadow-[inset_-4px_0_12px_rgba(0,0,0,0.1)] z-10 rounded-l-xl">S</div>
+        <div class="dropzone flex-grow flex flex-wrap gap-2 p-3 items-start transition-colors bg-gray-800 group-hover:bg-gray-750" data-tier="S"></div>
+      </div>
+      
+      <!-- Tier A -->
+      <div class="flex min-h-[100px] border-b border-gray-700/50 last:border-0 relative group">
+        <div class="w-24 sm:w-32 bg-tierA flex items-center justify-center text-gray-900 font-black text-2xl sm:text-3xl shadow-[inset_-4px_0_12px_rgba(0,0,0,0.1)] z-10 rounded-l-xl">A</div>
+        <div class="dropzone flex-grow flex flex-wrap gap-2 p-3 items-start transition-colors bg-gray-800 group-hover:bg-gray-750" data-tier="A"></div>
+      </div>
+
+      <!-- Tier B -->
+      <div class="flex min-h-[100px] border-b border-gray-700/50 last:border-0 relative group">
+        <div class="w-24 sm:w-32 bg-tierB flex items-center justify-center text-gray-900 font-black text-2xl sm:text-3xl shadow-[inset_-4px_0_12px_rgba(0,0,0,0.1)] z-10 rounded-l-xl">B</div>
+        <div class="dropzone flex-grow flex flex-wrap gap-2 p-3 items-start transition-colors bg-gray-800 group-hover:bg-gray-750" data-tier="B"></div>
+      </div>
+
+      <!-- Tier C -->
+      <div class="flex min-h-[100px] border-b border-gray-700/50 last:border-0 relative group">
+        <div class="w-24 sm:w-32 bg-tierC flex items-center justify-center text-gray-900 font-black text-2xl sm:text-3xl shadow-[inset_-4px_0_12px_rgba(0,0,0,0.1)] z-10 rounded-l-xl">C</div>
+        <div class="dropzone flex-grow flex flex-wrap gap-2 p-3 items-start transition-colors bg-gray-800 group-hover:bg-gray-750" data-tier="C"></div>
+      </div>
+
+      <!-- Tier D -->
+      <div class="flex min-h-[100px] relative group">
+        <div class="w-24 sm:w-32 bg-tierD flex items-center justify-center text-gray-900 font-black text-2xl sm:text-3xl shadow-[inset_-4px_0_12px_rgba(0,0,0,0.1)] z-10 rounded-bl-xl rounded-tl-xl">D</div>
+        <div class="dropzone flex-grow flex flex-wrap gap-2 p-3 items-start transition-colors bg-gray-800 group-hover:bg-gray-750 rounded-br-xl rounded-tr-xl" data-tier="D"></div>
+      </div>
+
+    </div>
+
+    <!-- Unranked Bank -->
+    <div class="bg-gray-800 rounded-2xl border border-gray-700 p-6 shadow-lg mb-8">
+      <h3 class="text-sm font-semibold text-gray-400 uppercase tracking-wider mb-4 flex items-center gap-2">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+        Unranked Items
+      </h3>
+      <div class="dropzone flex-grow flex flex-wrap gap-3 min-h-[100px] p-2 rounded-xl bg-gray-900/50 border border-dashed border-gray-700 transition-colors" data-tier="unranked" id="unranked-container"></div>
+    </div>
+  </div>
+
+  <script>
+    // Supabase Configuration
+    const SUPABASE_URL = 'https://pwsidjuloixumvxxfvjn.supabase.co';
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3c2lkanVsb2l4dW12eHhmdmpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MjY4MjgsImV4cCI6MjA5ODEwMjgyOH0.-DMypXEWU9B5dsFf5tQ5WevcF0GqE_s31aO7GPGxTAs';
+    
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    
+    // Application State
+    let currentUser = null;
+    let items = []; // Array of { id: string, text: string, tier: string }
+    let channel = null;
+
+    // DOM Elements
+    const authSection = document.getElementById('auth-section');
+    const appSection = document.getElementById('app-section');
+    const loginBtn = document.getElementById('login-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+    const userInfo = document.getElementById('user-info');
+    const newItemInput = document.getElementById('new-item-input');
+    const addItemBtn = document.getElementById('add-item-btn');
+    const dropzones = document.querySelectorAll('.dropzone');
+
+    // Initialize App
+    async function init() {
+      // Check session
+      const { data: { session } } = await supabase.auth.getSession();
+      
+      // Setup Auth listener
+      supabase.auth.onAuthStateChange((_event, session) => {
+        handleAuthChange(session);
+      });
+
+      handleAuthChange(session);
+      setupEventListeners();
+    }
+
+    function handleAuthChange(session) {
+      if (session) {
+        currentUser = session.user;
+        authSection.classList.add('hidden');
+        appSection.classList.remove('hidden');
+        userInfo.textContent = currentUser.user_metadata?.full_name || currentUser.email;
+        setupRealtime();
+      } else {
+        currentUser = null;
+        authSection.classList.remove('hidden');
+        appSection.classList.add('hidden');
+        if (channel) {
+          supabase.removeChannel(channel);
+          channel = null;
+        }
+      }
+    }
+
+    function setupEventListeners() {
+      loginBtn.addEventListener('click', () => {
+        supabase.auth.signInWithOAuth({
+          provider: 'google',
+          options: {
+            redirectTo: window.location.origin + window.location.pathname
+          }
+        });
+      });
+
+      logoutBtn.addEventListener('click', async () => {
+        await supabase.auth.signOut();
+      });
+
+      addItemBtn.addEventListener('click', handleAddItem);
+      newItemInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') handleAddItem();
+      });
+
+      // Drag and Drop Zone Events
+      dropzones.forEach(zone => {
+        zone.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          zone.classList.add('dragover');
+          e.dataTransfer.dropEffect = 'move';
+        });
+
+        zone.addEventListener('dragleave', (e) => {
+          zone.classList.remove('dragover');
+        });
+
+        zone.addEventListener('drop', (e) => {
+          e.preventDefault();
+          zone.classList.remove('dragover');
+          const itemId = e.dataTransfer.getData('text/plain');
+          const newTier = zone.getAttribute('data-tier');
+          
+          if (itemId && newTier) {
+            moveItem(itemId, newTier);
+          }
+        });
+      });
+    }
+
+    // Realtime Sync Logic
+    function setupRealtime() {
+      if (channel) return;
+
+      channel = supabase.channel('tier-maker-room', {
+        config: {
+          broadcast: { self: false }
+        }
+      });
+
+      channel
+        .on('broadcast', { event: 'sync-state' }, (payload) => {
+          items = payload.payload.items;
+          renderItems();
+        })
+        .on('broadcast', { event: 'request-state' }, () => {
+          // Send our state to the new person if we have items
+          if (items.length > 0) {
+            broadcastState();
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            // Ask others for current state
+            channel.send({
+              type: 'broadcast',
+              event: 'request-state',
+              payload: {}
+            });
+          }
+        });
+    }
+
+    function broadcastState() {
+      if (!channel) return;
+      channel.send({
+        type: 'broadcast',
+        event: 'sync-state',
+        payload: { items }
+      });
+    }
+
+    // Core Logic
+    function handleAddItem() {
+      const text = newItemInput.value.trim();
+      if (!text) return;
+
+      const newItem = {
+        id: 'item-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
+        text: text,
+        tier: 'unranked'
+      };
+
+      items.push(newItem);
+      newItemInput.value = '';
+      
+      renderItems();
+      broadcastState();
+    }
+
+    function moveItem(id, tier) {
+      const itemIndex = items.findIndex(i => i.id === id);
+      if (itemIndex > -1) {
+        items[itemIndex].tier = tier;
+        renderItems();
+        broadcastState();
+      }
+    }
+
+    function renderItems() {
+      // Clear all dropzones
+      dropzones.forEach(zone => {
+        zone.innerHTML = '';
+      });
+
+      // Render items in their respective tiers
+      items.forEach(item => {
+        const el = document.createElement('div');
+        el.className = 'drag-item bg-gray-700 text-white font-medium px-4 py-2 rounded-lg shadow-md border border-gray-600 hover:bg-gray-600 hover:border-gray-500 break-words max-w-full';
+        el.draggable = true;
+        el.textContent = item.text;
+        el.setAttribute('data-id', item.id);
+
+        // Drag events for the item
+        el.addEventListener('dragstart', (e) => {
+          e.dataTransfer.setData('text/plain', item.id);
+          e.dataTransfer.effectAllowed = 'move';
+          setTimeout(() => el.classList.add('dragging'), 0);
+        });
+
+        el.addEventListener('dragend', (e) => {
+          el.classList.remove('dragging');
+        });
+
+        // Find correct dropzone
+        const zone = document.querySelector(`.dropzone[data-tier="${item.tier}"]`);
+        if (zone) {
+          zone.appendChild(el);
+        }
+      });
+    }
+
+    // Boot
+    window.addEventListener('DOMContentLoaded', init);
+  </script>
+</body>
+</html>
