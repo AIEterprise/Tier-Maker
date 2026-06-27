@@ -65,7 +65,7 @@
 <body class="bg-gray-900 text-white min-h-screen flex flex-col antialiased">
   
   <!-- Auth Section -->
-  <div id="auth-section" class="flex-grow flex items-center justify-center p-6 flex-col hidden">
+  <div id="auth-section" class="flex-grow flex items-center justify-center p-6 flex-col">
     <div class="max-w-md w-full bg-gray-800 rounded-2xl shadow-2xl p-8 border border-gray-700 text-center relative overflow-hidden">
       <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-pink-500 via-red-500 to-yellow-500"></div>
       <h1 class="text-3xl font-bold mb-2 tracking-tight text-white">Tier Maker</h1>
@@ -174,16 +174,23 @@
 
     // Initialize App
     async function init() {
-      // Check session
-      const { data: { session } } = await supabase.auth.getSession();
-      
-      // Setup Auth listener
-      supabase.auth.onAuthStateChange((_event, session) => {
-        handleAuthChange(session);
-      });
-
-      handleAuthChange(session);
+      // Setup listeners first so UI works even if session check errors out
       setupEventListeners();
+
+      try {
+        // Check session
+        const { data: { session }, error } = await supabase.auth.getSession();
+        if (error) console.error("Session check error:", error);
+        
+        // Setup Auth listener
+        supabase.auth.onAuthStateChange((_event, session) => {
+          handleAuthChange(session);
+        });
+
+        handleAuthChange(session);
+      } catch (err) {
+        console.error("Initialization error:", err);
+      }
     }
 
     function handleAuthChange(session) {
