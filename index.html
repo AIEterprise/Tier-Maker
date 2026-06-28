@@ -82,6 +82,10 @@
     <!-- Controls -->
     <div class="mb-8 flex gap-3">
       <input type="text" id="new-item-input" placeholder="Type a text block to add..." class="flex-grow bg-gray-800 border border-gray-700 rounded-xl px-5 py-3 text-white focus:outline-none focus:ring-2 focus:ring-pink-500 focus:border-transparent placeholder-gray-500 transition-all shadow-inner">
+      <button id="add-image-btn" class="bg-gray-800 border border-gray-700 hover:bg-gray-700 text-white font-bold py-3 px-4 rounded-xl transition-all shadow-lg flex items-center justify-center" aria-label="Add image">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"></path></svg>
+      </button>
+      <input type="file" id="image-upload-input" accept="image/*" class="hidden">
       <button id="add-item-btn" class="bg-gradient-to-r from-pink-500 to-orange-500 hover:from-pink-600 hover:to-orange-600 text-white font-bold py-3 px-8 rounded-xl transition-all shadow-lg hover:shadow-xl transform hover:-translate-y-0.5 active:translate-y-0">Add</button>
     </div>
 
@@ -138,12 +142,15 @@
     const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
     
     // Application State
-    let items = []; // Array of { id: string, text: string, tier: string }
+    const sessionId = 'sess-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
+    let items = []; // Array of { id: string, text: string, tier: string, type: string, url: string }
     let channel = null;
 
     // DOM Elements
     const newItemInput = document.getElementById('new-item-input');
     const addItemBtn = document.getElementById('add-item-btn');
+    const addImageBtn = document.getElementById('add-image-btn');
+    const imageUploadInput = document.getElementById('image-upload-input');
     const dropzones = document.querySelectorAll('.dropzone');
 
     // Initialize App
@@ -157,6 +164,8 @@
       newItemInput.addEventListener('keypress', (e) => {
         if (e.key === 'Enter') handleAddItem();
       });
+      addImageBtn.addEventListener('click', () => imageUploadInput.click());
+      imageUploadInput.addEventListener('change', handleImageUpload);
 
       // Drag and Drop Zone Events
       dropzones.forEach(zone => {
@@ -243,6 +252,43 @@
       broadcastState();
     }
 
+    async function handleImageUpload(e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const img = new Image();
+      const reader = new FileReader();
+
+      reader.onload = (event) => {
+        img.src = event.target.result;
+      };
+
+      img.onload = async () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = 60;
+        canvas.height = 60;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, 60, 60);
+        const base64 = canvas.toDataURL('image/jpeg', 0.8);
+
+        await supabaseClient.from('tier_images').insert({ session_id: sessionId, image_data: base64 });
+
+        const newItem = {
+          id: 'img-' + Date.now(),
+          type: 'image',
+          url: base64,
+          tier: 'unranked'
+        };
+
+        items.push(newItem);
+        imageUploadInput.value = '';
+        renderItems();
+        broadcastState();
+      };
+
+      reader.readAsDataURL(file);
+    }
+
     function moveItem(id, tier) {
       const itemIndex = items.findIndex(i => i.id === id);
       if (itemIndex > -1) {
@@ -261,9 +307,14 @@
       // Render items in their respective tiers
       items.forEach(item => {
         const el = document.createElement('div');
-        el.className = 'drag-item bg-gray-700 text-white font-medium px-4 py-2 rounded-lg shadow-md border border-gray-600 hover:bg-gray-600 hover:border-gray-500 break-words max-w-full';
+        if (item.type === 'image') {
+          el.className = 'drag-item rounded-lg shadow-md border border-gray-600 hover:border-gray-500 break-words max-w-full flex items-center justify-center overflow-hidden bg-transparent';
+          el.innerHTML = `<img src="${item.url}" class="w-[60px] h-[60px] object-cover pointer-events-none rounded-md">`;
+        } else {
+          el.className = 'drag-item bg-gray-700 text-white font-medium px-4 py-2 rounded-lg shadow-md border border-gray-600 hover:bg-gray-600 hover:border-gray-500 break-words max-w-full';
+          el.textContent = item.text;
+        }
         el.draggable = true;
-        el.textContent = item.text;
         el.setAttribute('data-id', item.id);
 
         // Drag events for the item
@@ -287,6 +338,18 @@
 
     // Boot
     window.addEventListener('DOMContentLoaded', init);
+    window.addEventListener('unload', () => {
+      fetch(SUPABASE_URL + '/rest/v1/rpc/delete_session_images_delayed', {
+        method: 'POST',
+        keepalive: true,
+        headers: {
+          'apikey': SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ sess_id: sessionId })
+      });
+    });
   </script>
 </body>
 </html>
