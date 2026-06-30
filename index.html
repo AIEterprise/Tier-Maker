@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Tier Maker Realtime</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <style>
     body {
@@ -134,12 +134,17 @@
     </div>
   </div>
 
-  <script>
-    // Supabase Configuration
-    const SUPABASE_URL = 'https://pwsidjuloixumvxxfvjn.supabase.co';
-    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InB3c2lkanVsb2l4dW12eHhmdmpuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MjY4MjgsImV4cCI6MjA5ODEwMjgyOH0.-DMypXEWU9B5dsFf5tQ5WevcF0GqE_s31aO7GPGxTAs';
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@insforge/sdk@latest/+esm';
     
-    const supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    // InsForge Configuration
+    const INSFORGE_URL = 'https://7d5k44d3.ap-southeast.insforge.app';
+    const INSFORGE_ANON_KEY = 'anon_05b88e8ae92fd0f7582ebf277a3b00d6c96382a97c2af104bd135d35dbaebfaf';
+    
+    const insforgeClient = createClient({
+      baseUrl: INSFORGE_URL,
+      anonKey: INSFORGE_ANON_KEY
+    });
     
     // Application State
     const sessionId = 'sess-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9);
@@ -193,45 +198,52 @@
     }
 
     // Realtime Sync Logic
-    function setupRealtime() {
+    async function setupRealtime() {
       if (channel) return;
 
-      channel = supabaseClient.channel('tier-maker-room', {
-        config: {
-          broadcast: { self: false }
-        }
+      insforgeClient.realtime.on('connect', () => {
+        console.log('Realtime connected');
       });
 
-      channel
-        .on('broadcast', { event: 'sync-state' }, (payload) => {
-          items = payload.payload.items;
-          renderItems();
-        })
-        .on('broadcast', { event: 'request-state' }, () => {
-          // Send our state to the new person if we have items
+      insforgeClient.realtime.on('error', (error) => {
+        console.error('Realtime error:', error);
+      });
+
+      await insforgeClient.realtime.connect();
+
+      channel = 'tier-maker-room';
+      const subscription = await insforgeClient.realtime.subscribe(channel);
+
+      if (subscription.ok) {
+        // Listen for sync-state from others
+        insforgeClient.realtime.on('sync-state', (message) => {
+          if (message.items) {
+            items = message.items;
+            renderItems();
+          }
+        });
+
+        // Listen for request-state from others
+        insforgeClient.realtime.on('request-state', () => {
           if (items.length > 0) {
             broadcastState();
           }
-        })
-        .subscribe((status) => {
-          if (status === 'SUBSCRIBED') {
-            // Ask others for current state
-            channel.send({
-              type: 'broadcast',
-              event: 'request-state',
-              payload: {}
-            });
-          }
         });
+
+        // Broadcast to request state from any existing clients
+        await insforgeClient.realtime.publish(channel, 'request-state', {});
+      } else {
+        console.error('Subscribe failed:', subscription.error);
+      }
     }
 
-    function broadcastState() {
+    async function broadcastState() {
       if (!channel) return;
-      channel.send({
-        type: 'broadcast',
-        event: 'sync-state',
-        payload: { items }
-      });
+      try {
+        await insforgeClient.realtime.publish(channel, 'sync-state', { items });
+      } catch (err) {
+        console.error('Publish error:', err);
+      }
     }
 
     // Core Logic
@@ -271,7 +283,8 @@
         ctx.drawImage(img, 0, 0, 60, 60);
         const base64 = canvas.toDataURL('image/jpeg', 0.8);
 
-        await supabaseClient.from('tier_images').insert({ session_id: sessionId, image_data: base64 });
+        // Note: InsForge SDK database insert accepts an array!
+        await insforgeClient.database.from('tier_images').insert([{ session_id: sessionId, image_data: base64 }]);
 
         const newItem = {
           id: 'img-' + Date.now(),
@@ -339,12 +352,11 @@
     // Boot
     window.addEventListener('DOMContentLoaded', init);
     window.addEventListener('unload', () => {
-      fetch(SUPABASE_URL + '/rest/v1/rpc/delete_session_images_delayed', {
+      fetch(INSFORGE_URL + '/api/database/rpc/delete_session_images_delayed', {
         method: 'POST',
         keepalive: true,
         headers: {
-          'apikey': SUPABASE_ANON_KEY,
-          'Authorization': 'Bearer ' + SUPABASE_ANON_KEY,
+          'Authorization': 'Bearer ' + INSFORGE_ANON_KEY,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({ sess_id: sessionId })
